@@ -23,12 +23,13 @@ VERSION = None
 # What packages are required for this module to be executed?
 REQUIRED = [
     'python-cryptobox',
-    'protobuf'
+    'protobuf',
+    'pydantic'
 ]
 
 # What packages are optional?
 EXTRAS = {
-    # 'fancy feature': ['django'],
+    'aio': ['aiohttp', 'aiofiles'],
 }
 
 # The rest you shouldn't have to touch too much :)

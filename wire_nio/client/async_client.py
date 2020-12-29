@@ -1,5 +1,3 @@
-import json
-from json.decoder import JSONDecodeError
 from typing import (
     Type,
     Union,
@@ -32,17 +30,14 @@ from .base_client import logged_in
 from ..api import (
     Api
 )
-from ..monitors import TransferMonitor
-from ..responses import (
-    Response,
-    LoginResponse,
-    ErrorResponse,
-    UsersResponse
-)
+
+from .. import response
+from .. import models
+
 from ..__version__ import __version__
 
 USER_AGENT = f"wire-nio/{__version__}"
-
+# USER_AGENT = "foo"
 
 @dataclass
 class ResponseCb:
@@ -50,15 +45,6 @@ class ResponseCb:
 
     func: Callable = field()
     filter: Union[Tuple[Type], Type, None] = None
-
-
-async def on_request_chunk_sent(session, context, params):
-    """TraceConfig callback to run when a chunk is sent for client uploads."""
-
-    context_obj = context.trace_request_ctx
-
-    if isinstance(context_obj, TransferMonitor):
-        context_obj.transferred += len(params.chunk)
 
 
 async def connect_wrapper(self, *args, **kwargs) -> Connection:
@@ -74,7 +60,6 @@ def client_session(func):
     async def wrapper(self, *args, **kwargs):
         if not self.client_session:
             trace = TraceConfig()
-            trace.on_request_chunk_sent.append(on_request_chunk_sent)
 
             self.client_session = ClientSession(
                 timeout=ClientTimeout(total=self.config.request_timeout),
@@ -135,10 +120,9 @@ class AsyncClient(Client):
             path: str,
             data: Union[None, str, AsyncDataT] = None,
             headers: Optional[Dict[str, str]] = None,
-            trace_context: Any = None,
             timeout: Optional[float] = None,
     ) -> ClientResponse:
-        """Send a request to the homeserver.
+        """Send a request.
 
         This function does not call receive_response().
 
@@ -149,8 +133,6 @@ class AsyncClient(Client):
             data (str, optional): Data that will be posted with the request.
             headers (Dict[str,str] , optional): Additional request headers that
                 should be used with the request.
-            trace_context (Any, optional): An object to use for the
-                ClientSession TraceConfig context
             timeout (int, optional): How many seconds the request has before
                 raising `asyncio.TimeoutError`.
                 Overrides `AsyncClient.config.request_timeout` if not `None`.
@@ -164,22 +146,17 @@ class AsyncClient(Client):
             ssl=self.ssl,
             proxy=self.proxy,
             headers=headers,
-            trace_request_ctx=trace_context,
-            timeout=self.config.request_timeout
-            if timeout is None
-            else timeout,
+            timeout=self.config.request_timeout if timeout is None else timeout
             )
 
-    async def _send(
+    async def api_send(
             self,
-            response_class: Type,
+            response_class: Type[response.BaseResponse],
             method: str,
             path: str,
             data: Union[None, str] = None,
             response_data: Optional[Tuple[Any, ...]] = None,
             content_type: Optional[str] = None,
-            trace_context: Optional[Any] = None,
-            # data_provider: Optional[DataProvider] = None,
             timeout: Optional[float] = None,
             content_length: Optional[int] = None,
     ):
@@ -189,7 +166,7 @@ class AsyncClient(Client):
             "User-Agent": USER_AGENT
         }
 
-        if not isinstance(response_class, LoginResponse):
+        if not isinstance(response_class, response.LoginResponse):
             headers["Authorization"] = f"Bearer {self.access_token}"
 
         if content_length is not None:
@@ -204,25 +181,21 @@ class AsyncClient(Client):
         while True:
             try:
                 transport_resp = await self.send(
-                    method, path, data, headers, trace_context, timeout,
+                    method, path, data, headers, timeout,
                 )
 
-                resp = await self.create_wire_response(
+                resp = await self.parse_wire_response(
                     response_class, transport_resp, response_data,
                 )
 
                 if (
-                        transport_resp.status == 429 or (
-                        isinstance(resp, ErrorResponse) and
-                        resp.status_code in ("M_LIMIT_EXCEEDED", 429)
-                )
+                        transport_resp.status == 429 or
+                        isinstance(resp, response.ErrorResponse)
                 ):
                     got_429 += 1
 
                     if max_429 is not None and got_429 > max_429:
                         break
-
-                    await self.run_response_callbacks([resp])
 
                     retry_after_ms = getattr(resp, "retry_after_ms", 0) or 5000
                     await sleep(retry_after_ms / 1000)
@@ -241,7 +214,7 @@ class AsyncClient(Client):
         await self.receive_response(resp)
         return resp
 
-    async def receive_response(self, response: Response) -> None:
+    async def receive_response(self, resp: response.BaseResponse) -> None:
         """Receive a Matrix Response and change the client state accordingly.
 
         Automatically called for all "high-level" methods of this API (each
@@ -252,49 +225,22 @@ class AsyncClient(Client):
         be replaced by decrypted ones if decryption is possible.
 
         Args:
-            response (Response): the response that we wish the client to handle
+            resp (Response): the response that we wish the client to handle
         """
-        if not isinstance(response, Response):
+        if not isinstance(resp, response.BaseResponse):
             raise ValueError("Invalid response received")
 
         # if isinstance(response, SyncResponse):
         #     await self._handle_sync(response)
-        else:
-            super().receive_response(response)
+        # else:
+        super().receive_response(resp)
 
     @staticmethod
-    async def parse_body(
-            transport_response: ClientResponse
-    ) -> Dict[Any, Any]:
-        """Parse the body of the response.
-
-        Low-level function which is normally only used by other methods of
-        this class.
-
-        Args:
-            transport_response(ClientResponse): The transport response that
-                contains the body of the response.
-
-        Returns a dictionary representing the response.
-        """
-        try:
-            return await transport_response.json()
-        except (JSONDecodeError, ContentTypeError):
-            try:
-                # matrix.org return an incorrect content-type for .well-known
-                # API requests, which leads to .text() working but not .json()
-                return json.loads(await transport_response.text())
-            except (JSONDecodeError, ContentTypeError):
-                pass
-
-            return {}
-
-    async def create_wire_response(
-            self,
-            response_class: Type,
+    async def parse_wire_response(
+            response_class: Type[response.BaseResponse],
             transport_response: ClientResponse,
             data: Tuple[Any, ...] = None,
-    ) -> Response:
+    ) -> response.BaseResponse:
         """Transform a transport response into a nio matrix response.
 
         Low-level function which is normally only used by other methods of
@@ -313,23 +259,31 @@ class AsyncClient(Client):
         data = data or ()
 
         content_type = transport_response.content_type
+        content = await transport_response.json()
         is_json = content_type == "application/json"
 
-        name = None
-        if transport_response.content_disposition:
-            name = transport_response.content_disposition.filename
+        return response_class().parse_data(content)
 
-        parsed_dict = await self.parse_body(transport_response)
-        resp = response_class.from_dict(parsed_dict, *data)
-
-        resp.transport_response = transport_response
-        return resp
-
-    async def login(self, password: str):
-        method, path, data = Api.login(self.email, password)
-        return await self._send(LoginResponse, method.name, path, data)
+    async def login(self, password: str, persist: bool = False):
+        method, path, data = Api.login(self.email, password, persist)
+        return await self.api_send(response.LoginResponse, method.name, path, data)
 
     @logged_in
     async def users(self, handles: Optional[str] = None, ids: Optional[str] = None):
         method, path = Api.users(handles, ids)
-        return await self._send(UsersResponse, method.name, path)
+        return await self.api_send(response.UsersResponse, method.name, path)
+
+    @logged_in
+    async def conversations(self, start: Optional[int] = None, size: Optional[int] = None):
+        method, path = Api.conversations(size=size, start=start)
+        return await self.api_send(response.ConverstionsResponse, method.name, path)
+
+    @logged_in
+    async def clients(self):
+        method, path = Api.clients()
+        return await self.api_send(response.ClientsResponse, method.name, path)
+
+    @logged_in
+    async def notifications(self):
+        method, path = Api.notifications()
+        return await self.api_send(response.NotificationsResponse, method.name, path)

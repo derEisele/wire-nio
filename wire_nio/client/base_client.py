@@ -7,8 +7,8 @@ from typing import (
 )
 from functools import wraps
 
-from ..responses import (
-    Response,
+from ..response import (
+    BaseResponse,
     LoginResponse,
     ErrorResponse
 )
@@ -79,7 +79,7 @@ class Client:
         return self.access_token != ""
 
     def receive_response(
-            self, response: Response
+            self, response: BaseResponse
     ) -> Optional[Coroutine[Any, Any, None]]:
         """Receive a Matrix Response and change the client state accordingly.
 
@@ -90,17 +90,17 @@ class Client:
         Args:
             response (Response): the response that we wish the client to handle
         """
-        if not isinstance(response, Response):
+        if not isinstance(response, BaseResponse):
             raise ValueError("Invalid response received")
         if isinstance(response, LoginResponse):
-            self.restore_login(response.access_token)
+            self.restore_login(response.data.access_token)
 
     def _handle_login(self, response: Union[LoginResponse, ErrorResponse]):
         if isinstance(response, ErrorResponse):
             return
 
         self.restore_login(
-            response.access_token
+            response.data.access_token
         )
 
     def restore_login(
