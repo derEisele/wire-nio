@@ -120,11 +120,12 @@ class Location(BaseModel):
 class Client(BaseModel):
     time: datetime
     location: Location
-    model: str
+    model: Optional[str]
     id: str
     type: str
-    class_: str = Field(alias="class")
+    class_: Optional[str] = Field(alias="class")
     label: Optional[str]
+    cookie: Optional[str]
 
 
 class User(BaseModel):
@@ -180,6 +181,15 @@ class NConversationConnectRequest(BaseModel):
     time: datetime
     from_: str = Field(alias="from")
     data: ConversationRequest
+
+
+class ClientRemove(BaseModel):
+    id: str
+
+
+class NUserClientRemove(BaseModel):
+    type: Literal["user.client-remove"]
+    client: ClientRemove
 
 
 class Connection(BaseModel):
@@ -239,6 +249,7 @@ class Notification(BaseModel):
         NConversationOtrMessageAdd,
         NUserConnection,
         NUserPropertiesSet,
+        NUserClientRemove,
         # Dict[str, Any]
     ]]
     id: str
@@ -252,7 +263,7 @@ class NotificationsResponse(BaseModel):
 
 class Key(BaseModel):
     key: str
-    id: str
+    id: int
 
 
 class SigKey(BaseModel):
@@ -268,7 +279,24 @@ class ClientRegisterRequest(BaseModel):
     type: Literal["permanent", "temporary"]
     prekeys: List[Key]
     class_: str = Field(alias="class", default="desktop")
+    model: str = Field(default="Wire-Nio")
     label: str
 
 
-ResponseType = Union[NotificationsResponse, LoginResponse, UsersResponse, ErrorResponse, ConversationsResponse]
+class ClientRegisterResponse(BaseModel):
+    id: str
+    cookie: str
+    label: str
+    location: Location
+    time: datetime
+    type: Literal["permanent", "temporary"]
+
+
+ResponseType = Union[
+    NotificationsResponse,
+    LoginResponse,
+    UsersResponse,
+    ErrorResponse,
+    ConversationsResponse,
+    ClientRegisterRequest
+]

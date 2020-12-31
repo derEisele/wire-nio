@@ -6,7 +6,7 @@ In general these functions are not directly called. One should use an existing
 client like AsyncClient or HttpClient.
 """
 
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Iterable, List, Tuple, Optional
 from urllib.parse import urlencode, quote
 from datetime import datetime
 from base64 import b64encode
@@ -79,6 +79,11 @@ class Api:
         return Method.POST, path, content.json()
 
     @staticmethod
+    def refresh_session():
+        path = Api._build_path(["access"])
+        return Method.POST, path
+
+    @staticmethod
     def users(handles: Optional[str] = None, ids: Optional[str] = None):
         query_params = {
             "handles": handles,
@@ -121,7 +126,7 @@ class Api:
         return Method.GET, path
 
     @staticmethod
-    def register_client(password: str, last_prekey: PreKey, prekeys: List[PreKey], cookie: str, persistent=False, class_="desktop", label="wire-nio"):
+    def register_client(password: str, last_prekey: PreKey, prekeys: Iterable[PreKey], cookie: str, persistent=False, class_="desktop", label="wire-nio"):
         path = Api._build_path(["clients"])
         sigkey = SigKey(
             enckey=b64encode(32 * b"\x00"),

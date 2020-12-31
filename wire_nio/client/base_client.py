@@ -6,15 +6,19 @@ from typing import (
     Any
 )
 from functools import wraps
+from datetime import datetime
 
 from ..response import (
     BaseResponse,
     LoginResponse,
-    ErrorResponse
+    ErrorResponse,
+    ClientRegisterResponse
 )
 from ..exceptions import (
     LocalProtocolError
 )
+from ..crypto.client import CrytoHandler
+from ..storage.client import ClientState
 
 
 def logged_in(func):
@@ -70,9 +74,13 @@ class ClientConfig:
 
 
 class Client:
-    def __init__(self, email, config: ClientConfig):
+    def __init__(self, email, config: ClientConfig, crypto_handler: CrytoHandler):
         self.email = email
         self.access_token = ""
+        self.client_id = ""
+        self.cookie_expire = datetime.now()
+        self.cookie = ""
+        self.crypto_handler = crypto_handler
 
     @property
     def logged_in(self):
@@ -93,31 +101,50 @@ class Client:
         if not isinstance(response, BaseResponse):
             raise ValueError("Invalid response received")
         if isinstance(response, LoginResponse):
-            self.restore_login(response.data.access_token)
+            self._handle_login(response)
+        elif isinstance(response, ClientRegisterResponse):
+            self._handle_register(response)
 
     def _handle_login(self, response: Union[LoginResponse, ErrorResponse]):
         if isinstance(response, ErrorResponse):
             return
 
         self.restore_login(
-            response.data.access_token
+            response.data.access_token,
+            response.cookie,
+            response.cookie_expire
         )
+
+    def _handle_register(self, response: ClientRegisterResponse):
+        self.client_id = response.data.id
 
     def restore_login(
             self,
-            # user_id: str,
             access_token: str,
+            cookie: str,
+            cookie_expire: datetime
     ):
-        """Restore a previous login to the homeserver.
+        """Restore a previous login
 
         Args:
-           user_id (str): The full mxid of the current user.
-           device_id (str): An unique identifier that distinguishes
-               this client instance.
            access_token (str): Token authorizing the user with the server.
+           cookie: The cookie
         """
-        # self.user_id = user_id
-        # self.device_id = device_id
         self.access_token = access_token
-        # if ENCRYPTION_ENABLED:
-        #     self.load_store()
+        if cookie and cookie_expire:
+            self.cookie = cookie
+            self.cookie_expire = cookie_expire
+
+    def export_state(self) -> ClientState:
+        return ClientState(
+            client_id=self.client_id,
+            cookie=self.cookie,
+            cookie_expire=self.cookie_expire,
+            access_token=self.access_token
+        )
+
+    def import_state(self, client_state: ClientState):
+        self.access_token = client_state.access_token
+        self.client_id = client_state.client_id
+        self.cookie = client_state.cookie
+        self.cookie_expire = client_state.cookie_expire

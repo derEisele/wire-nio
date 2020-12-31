@@ -5,7 +5,9 @@ from typing import (
     Tuple,
     Any,
     Dict,
-    Callable, List
+    Callable,
+    List,
+    Iterable
 )
 from functools import wraps, partial
 from dataclasses import dataclass, field
@@ -13,6 +15,7 @@ from asyncio import Event as AsyncioEvent
 from asyncio import TimeoutError as AsyncioTimeoutError
 from asyncio import sleep
 import warnings
+from datetime import datetime
 
 from aiohttp import (
     ClientResponse,
@@ -23,6 +26,8 @@ from aiohttp import (
 )
 from aiohttp.client_exceptions import ClientConnectionError
 from aiohttp.connector import Connection
+
+from pprint import pprint
 
 from . import Client, ClientConfig
 from .async_attachements import AsyncDataT
@@ -169,6 +174,9 @@ class AsyncClient(Client):
         if not isinstance(response_class, response.LoginResponse):
             headers["Authorization"] = f"Bearer {self.access_token}"
 
+        if self.cookie:
+            headers["Cookie"] = f"zuid={self.cookie}"
+
         if content_length is not None:
             headers["Content-Length"] = str(content_length)
 
@@ -208,7 +216,7 @@ class AsyncClient(Client):
                 if max_timeouts is not None and got_timeouts > max_timeouts:
                     raise
 
-                wait = await self.get_timeout_retry_wait_time(got_timeouts)
+                wait = 5
                 await sleep(wait)
 
         await self.receive_response(resp)
@@ -260,30 +268,55 @@ class AsyncClient(Client):
 
         content_type = transport_response.content_type
         content = await transport_response.json()
+        pprint(content)
         is_json = content_type == "application/json"
 
-        return response_class().parse_data(content)
+        resp = response_class()
+        resp.parse_data(content)
 
-    async def login(self, password: str, persist: bool = False):
+        if isinstance(resp, response.LoginResponse):
+            c = transport_response.cookies.get("zuid")
+            if c:
+                resp.cookie = c.value
+                resp.cookie_expire = datetime.strptime(c.get("expires"), "%a, %d-%b-%Y %H:%M:%S %Z")
+
+        return resp
+
+    async def login(self, password: str, persist: bool = False) -> response.LoginResponse:
         method, path, data = Api.login(self.email, password, persist)
         return await self.api_send(response.LoginResponse, method.name, path, data)
 
     @logged_in
-    async def users(self, handles: Optional[str] = None, ids: Optional[str] = None):
+    async def refresh_session(self):
+        method, path = Api.refresh_session()
+        return await self.api_send(response.LoginResponse, method.name, path)
+
+    @logged_in
+    async def users(self, handles: Optional[str] = None, ids: Optional[str] = None) -> response.UsersResponse:
         method, path = Api.users(handles, ids)
         return await self.api_send(response.UsersResponse, method.name, path)
 
     @logged_in
-    async def conversations(self, start: Optional[int] = None, size: Optional[int] = None):
+    async def conversations(self, start: Optional[int] = None, size: Optional[int] = None) -> response.ConverstionsResponse:
         method, path = Api.conversations(size=size, start=start)
         return await self.api_send(response.ConverstionsResponse, method.name, path)
 
     @logged_in
-    async def clients(self):
+    async def clients(self) -> response.ClientsResponse:
         method, path = Api.clients()
         return await self.api_send(response.ClientsResponse, method.name, path)
 
     @logged_in
-    async def notifications(self):
-        method, path = Api.notifications()
+    async def notifications(self, since: datetime) -> response.NotificationsResponse:
+        method, path = Api.notifications(self.client_id, since)
         return await self.api_send(response.NotificationsResponse, method.name, path)
+
+    @logged_in
+    async def register_client(self, password: str, persistent=True, label="wire-nio") -> response.ClientRegisterResponse:
+        cookie = self.cookie
+        self.crypto_handler.generate_prekeys()
+        last_prekey = self.crypto_handler.last_prekey
+        prekeys = self.crypto_handler.prekeys.values()
+
+        method, path, content = Api.register_client(password, last_prekey, prekeys, cookie, persistent=persistent, label=label)
+        return await self.api_send(response.ClientRegisterResponse, method.name, path, content)

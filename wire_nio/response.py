@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import Type, Union, List, Dict
+from typing import Type, Union, List, Dict, Optional
+from datetime import datetime
 
 from . import models
 
@@ -22,6 +23,8 @@ class BaseResponse:
 @dataclass
 class LoginResponse(BaseResponse):
     _model: Type[models.LoginResponse] = field(default=models.LoginResponse)
+    cookie: Optional[str] = field(default="")
+    cookie_expire: Optional[datetime] = field(default=None)
 
 
 @dataclass
@@ -49,3 +52,8 @@ class ClientsResponse(BaseResponse):
 @dataclass
 class NotificationsResponse(BaseResponse):
     _model: Type[models.NotificationsResponse] = field(default=models.NotificationsResponse)
+
+
+@dataclass
+class ClientRegisterResponse(BaseResponse):
+    _model: Type[models.ClientRegisterResponse] = field(default=models.ClientRegisterResponse)
