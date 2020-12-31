@@ -37,7 +37,7 @@ from ..api import (
 )
 
 from .. import response
-from .. import models
+from ..crypto.client import CrytoHandler
 
 from ..__version__ import __version__
 
@@ -90,6 +90,7 @@ class AsyncClient(Client):
             email: str = "",
             config: Optional[AsyncClientConfig] = None,
             proxy: Optional[str] = None,
+            crypto_handler: Optional[CrytoHandler] = None
     ):
         self.client_session: Optional[ClientSession] = None
         self.server = "https://prod-nginz-https.wire.com"
@@ -116,7 +117,10 @@ class AsyncClient(Client):
 
         self.config: AsyncClientConfig = config or AsyncClientConfig()
 
-        super().__init__(email, self.config)
+        if not crypto_handler:
+            crypto_handler = CrytoHandler()
+
+        super().__init__(email, self.config, crypto_handler)
 
     @client_session
     async def send(
