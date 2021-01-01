@@ -139,6 +139,11 @@ class Api:
         return Method.GET, path
 
     @staticmethod
+    def conversation(conv_id: str):
+        path = Api._build_path(["conversations", conv_id])
+        return Method.GET, path
+
+    @staticmethod
     def clients():
         return Method.GET, Api._build_path(["clients"])
 
@@ -184,3 +189,18 @@ class Api:
         )
 
         return Method.POST, path, content.json()
+
+    @staticmethod
+    def client_ids_from_user(user_id: str):
+        path = Api._build_path(["users", user_id, "clients"])
+        return Method.GET, path
+
+    @staticmethod
+    def pre_keys_for_client(user_id: str, client_id: str):
+        path = Api._build_path(["users", user_id, "prekeys", client_id])
+        return Method.GET, path
+
+    @staticmethod
+    def pre_keys_for_user(user_id: str):
+        path = Api._build_path(["users", user_id, "prekeys"])
+        return Method.GET, path

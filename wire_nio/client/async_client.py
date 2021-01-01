@@ -37,14 +37,13 @@ from typing import (
     Any,
     Dict,
     Callable,
-    List,
-    Iterable
+    List
 )
 from functools import wraps, partial
 from dataclasses import dataclass, field
 from asyncio import Event as AsyncioEvent
 from asyncio import TimeoutError as AsyncioTimeoutError
-from asyncio import sleep
+from asyncio import sleep, gather, ensure_future
 import warnings
 from datetime import datetime
 
@@ -58,6 +57,8 @@ from aiohttp.client_exceptions import ClientConnectionError
 from aiohttp.connector import Connection
 
 from pprint import pprint
+from cryptobox.cbox import PreKey
+from base64 import b64decode, b64encode
 
 from . import Client, ClientConfig
 from .base_client import logged_in
@@ -330,9 +331,14 @@ class AsyncClient(Client):
         return await self.api_send(response.UsersResponse, method.name, path)
 
     @logged_in
-    async def conversations(self, start: Optional[int] = None, size: Optional[int] = None) -> response.ConverstionsResponse:
+    async def conversations(self, start: Optional[int] = None, size: Optional[int] = None) -> response.ConversationsResponse:
         method, path = Api.conversations(size=size, start=start)
-        return await self.api_send(response.ConverstionsResponse, method.name, path)
+        return await self.api_send(response.ConversationsResponse, method.name, path)
+
+    @logged_in
+    async def conversation(self, conv_id: str) -> response.ConversationResponse:
+        method, path = Api.conversation(conv_id)
+        return await self.api_send(response.ConversationResponse, method.name, path)
 
     @logged_in
     async def clients(self) -> response.ClientsResponse:
@@ -353,3 +359,51 @@ class AsyncClient(Client):
 
         method, path, content = Api.register_client(password, last_prekey, prekeys, cookie, persistent=persistent, label=label)
         return await self.api_send(response.ClientRegisterResponse, method.name, path, content)
+
+    @logged_in
+    async def client_ids_from_user(self, user_id: str):
+        method, path = Api.client_ids_from_user(user_id)
+        return await self.api_send(response.ClientIdsFromUserResponse, method.name, path)
+
+    @logged_in
+    async def pre_keys_for_client(self, user_id: str, client_id: str):
+        method, path = Api.pre_keys_for_client(user_id, client_id)
+        return await self.api_send(response.PreKeyResponse, method.name, path)
+
+    @logged_in
+    async def pre_keys_for_user(self, user_id):
+        method, path = Api.pre_keys_for_user(user_id)
+        return await self.api_send(response.UserPreKeysResponse, method.name, path)
+
+    @logged_in
+    async def _encrypt_for_conv(self, conv_id: str, message: bytes):
+        conf: response.ConversationResponse = await self.conversation(conv_id)
+        key_requests = []
+
+        for other in conf.data.members.others:
+            task = ensure_future(self.pre_keys_for_user(other.id))
+            key_requests.append(task)
+
+        res = await gather(*key_requests)
+        pprint(res)
+        enc_dict = {}
+
+        for r in res:
+            user_id = r.data.user
+            enc_dict[user_id] = {}
+            for c in r.data.clients:
+                client_id = c.client
+                pk = PreKey(
+                    id=c.prekey.id,
+                    data=b64decode(c.prekey.key)
+                )
+                cipher = self.crypto_handler.encrypt_message(
+                    user_id=user_id,
+                    client_id=client_id,
+                    pre_key=pk,
+                    text=message
+                )
+                enc_dict[user_id][client_id] = b64encode(cipher)
+
+        return enc_dict
+

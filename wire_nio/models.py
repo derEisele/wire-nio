@@ -198,13 +198,13 @@ class NConversationConnectRequest(BaseModel):
     data: ConversationRequest
 
 
-class ClientRemove(BaseModel):
+class ClientId(BaseModel):
     id: str
 
 
 class NUserClientRemove(BaseModel):
     type: Literal["user.client-remove"]
-    client: ClientRemove
+    client: ClientId
 
 
 class Connection(BaseModel):
@@ -307,11 +307,23 @@ class ClientRegisterResponse(BaseModel):
     type: Literal["permanent", "temporary"]
 
 
+class PreKeyResponse(BaseModel):
+    client: str
+    prekey: Key
+
+
+class UserPrekeysResponse(BaseModel):
+    user: str
+    clients: List[PreKeyResponse]
+
+
 ResponseType = Union[
     NotificationsResponse,
     LoginResponse,
     UsersResponse,
     ErrorResponse,
     ConversationsResponse,
-    ClientRegisterRequest
+    ClientRegisterRequest,
+    UserPrekeysResponse,
+    PreKeyResponse
 ]

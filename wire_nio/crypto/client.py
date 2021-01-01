@@ -30,7 +30,24 @@ class CrytoHandler:
         for i in range(start, count):
             self.prekeys[i] = self.cryptobox.new_pre_key(i)
 
-    def decrypt_message(self, from_: str, sender: str, text: str):
-        dec = self.cryptobox.decrypt(from_, sender, b64decode(text))
+    def decrypt_message(self, from_: str, sender: str, text: bytes) -> bytes:
+        """Decrypt a message
+
+        :param from_: The user id of the sender (UUID)
+        :param sender: The senders client id
+        :param text: The encrypted message
+        :return: The decrypted bytes
+        """
+        dec = self.cryptobox.decrypt(from_, sender, text)
         return dec
 
+    def encrypt_message(self, user_id: str, client_id: str, pre_key: cbox.PreKey, text: bytes) -> bytes:
+        """Encrypt a message for a client
+
+        :param user_id: The receiver user id (UUID)
+        :param client_id: The client id
+        :param pre_key: A matching PreKey
+        :param text: The message to encrypt
+        """
+        enc = self.cryptobox.encrypt(user_id, client_id, pre_key, text)
+        return enc

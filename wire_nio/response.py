@@ -54,8 +54,13 @@ class UsersResponse(BaseResponse):
 
 
 @dataclass
-class ConverstionsResponse(BaseResponse):
+class ConversationsResponse(BaseResponse):
     _model: Type[models.ConversationsResponse] = field(default=models.ConversationsResponse)
+
+
+@dataclass
+class ConversationResponse(BaseResponse):
+    _model: Type[models.Conversation] = field(default=models.Conversation)
 
 
 @dataclass
@@ -72,3 +77,19 @@ class NotificationsResponse(BaseResponse):
 @dataclass
 class ClientRegisterResponse(BaseResponse):
     _model: Type[models.ClientRegisterResponse] = field(default=models.ClientRegisterResponse)
+
+
+@dataclass
+class ClientIdsFromUserResponse(BaseResponse):
+    _model: Type[models.ClientId] = field(default=models.ClientId)
+    _model_many: bool = field(default=True)
+
+
+@dataclass
+class PreKeyResponse(BaseResponse):
+    _model: Type[models.PreKeyResponse] = field(default=models.PreKeyResponse)
+
+
+@dataclass
+class UserPreKeysResponse(BaseResponse):
+    _model: Type[models.UserPrekeysResponse] = field(default=models.UserPrekeysResponse)
