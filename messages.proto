@@ -1,3 +1,5 @@
+// From: https://github.com/wireapp/lithium/blob/develop/proto/messages.proto
+
 syntax = "proto2";
 option java_package = "com.waz.model";
 
